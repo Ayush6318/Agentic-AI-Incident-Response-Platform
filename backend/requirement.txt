@@ -3,3 +3,5 @@ langgraph
 langchain-community
 chromadb
 fastapi
+langchain_google_genai
+pydantic_settings
