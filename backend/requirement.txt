@@ -5,3 +5,7 @@ chromadb
 fastapi
 langchain_google_genai
 pydantic_settings
+langchain_groq
+sentence-transformers
+langchain-huggingface
+langchain-chroma
