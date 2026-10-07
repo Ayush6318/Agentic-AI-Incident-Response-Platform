@@ -4,6 +4,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.llm import get_llm
 from app.agents.state import IncidentState
 from app.tools.read_tools import search_logs,get_recent_commits,get_metrics
+import re
+from langgraph.types import interrupt,Command
+from app.tools.write_tools import execute_action
 
 llm = get_llm()
 
@@ -42,6 +45,20 @@ def planner_node(state : IncidentState):
   return {"plan": msg.content}
 
 
+def approval_node(state : IncidentState):
+  decision = interrupt({"question" :  "Approve this plan ?","plan":state["plan"]})
+  return {"approved":decision["approve"]}
+
+def remediation_node(state: IncidentState):
+    if not state["approved"]:
+        return {"result": "Rejected by human. No action taken."}
+    m = re.search(r"ACTION:\s*rollback\s+(\w+)", state["plan"])
+    if not m:
+        return {"result": "No executable action in plan."}
+    return {"result": execute_action("rollback", m.group(1), "sre", True)}
+
+
+
 def build_graph(checkpointer = None):
   g = StateGraph(IncidentState)
   
@@ -50,16 +67,29 @@ def build_graph(checkpointer = None):
   g.add_node("code",make_node(code_agents,"code"))
   g.add_node("root_cause",root_cause_node)
   g.add_node("planner",planner_node)
+  g.add_node("approval",approval_node)
+  g.add_node("remediation",remediation_node)
+  
   
   for n in ("logs","metrics","code"):
     g.add_edge(START,n)
     g.add_edge(n,"root_cause")
   g.add_edge("root_cause","planner")
-  g.add_edge("planner",END)
+  g.add_edge("planner","approval")
+  g.add_edge("approval","remediation")
+  g.add_edge("remediation",END)
+  
   
   return g.compile(checkpointer=MemorySaver())
 
 graph = build_graph()
+
+
+cfg = {"configurable": {"thread_id": "t2"}}
+graph.invoke({"incident": "payment-service 500 after deploy", "evidence": []}, cfg)
+print(graph.get_state(cfg).next)                       # ('approval',) = paused
+out = graph.invoke(Command(resume={"approve": True}), cfg)
+print(out["result"])
   
     
     
