@@ -7,6 +7,7 @@ from app.tools.read_tools import search_logs,get_recent_commits,get_metrics
 import re
 from langgraph.types import interrupt,Command
 from app.tools.write_tools import execute_action
+from app.rag.memory import recall,remember
 
 llm = get_llm()
 
@@ -31,9 +32,12 @@ def make_node(agent, label):
 
 def root_cause_node(state : IncidentState):
   evidence = "\n".join(state["evidence"])
+  past = recall(state["incident"]) or "NO similar past incidents"
   msg = llm.invoke(
         f"Incident: {state['incident']}\nEvidence:\n{evidence}\n\n"
+        f"Similar past incidents (hints only, verify against the evidence above):\n{past}\n\n"
         "State the most likely root cause, a confidence %, and the evidence list.")
+  
   return {"root_cause": msg.content}
 
 
@@ -55,6 +59,7 @@ def remediation_node(state: IncidentState):
     m = re.search(r"ACTION:\s*rollback\s+(\w+)", state["plan"])
     if not m:
         return {"result": "No executable action in plan."}
+    remember(state["incident"], state["root_cause"])
     return {"result": execute_action("rollback", m.group(1), "sre", True)}
 
 
@@ -80,36 +85,26 @@ def build_graph(checkpointer = None):
   g.add_edge("remediation",END)
   
   
-  return g.compile(checkpointer=MemorySaver())
+  return g.compile(checkpointer= checkpointer or MemorySaver())
 
 graph = build_graph()
 
    
  # here used streaming techinque so that user get know what is happening or up to what point agent has done its work. 
    
-cfg = {"configurable": {"thread_id": "t2"}}
+if __name__ == "__main__":
+    cfg = {"configurable": {"thread_id": "t2"}}
+    for update in graph.stream(
+        {"incident": "payment-service 500 after deploy", "evidence": []},
+        cfg, stream_mode="updates"):
+        for node, data in update.items():
+            print("DONE:", node)
 
+    print("NEXT:", graph.get_state(cfg).next)
 
-for update in graph.stream(
-    {"incident": "payment-service 500 after deploy", "evidence": []},
-    cfg,
-    stream_mode="updates"
-):
-    for node, data in update.items():
-        print("DONE:", node)
-
-
-print("NEXT:", graph.get_state(cfg).next)
-
-
-for update in graph.stream(
-    Command(resume={"approve": True}),
-    cfg,
-    stream_mode="updates"
-):
-    for node, data in update.items():
-        print("DONE:", node)
-  
+    for update in graph.stream(Command(resume={"approve": True}), cfg, stream_mode="updates"):
+        for node, data in update.items():
+            print("DONE:", node)
     
     
   
