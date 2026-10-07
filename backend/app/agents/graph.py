@@ -84,12 +84,31 @@ def build_graph(checkpointer = None):
 
 graph = build_graph()
 
-
+   
+ # here used streaming techinque so that user get know what is happening or up to what point agent has done its work. 
+   
 cfg = {"configurable": {"thread_id": "t2"}}
-graph.invoke({"incident": "payment-service 500 after deploy", "evidence": []}, cfg)
-print(graph.get_state(cfg).next)                       # ('approval',) = paused
-out = graph.invoke(Command(resume={"approve": True}), cfg)
-print(out["result"])
+
+
+for update in graph.stream(
+    {"incident": "payment-service 500 after deploy", "evidence": []},
+    cfg,
+    stream_mode="updates"
+):
+    for node, data in update.items():
+        print("DONE:", node)
+
+
+print("NEXT:", graph.get_state(cfg).next)
+
+
+for update in graph.stream(
+    Command(resume={"approve": True}),
+    cfg,
+    stream_mode="updates"
+):
+    for node, data in update.items():
+        print("DONE:", node)
   
     
     
