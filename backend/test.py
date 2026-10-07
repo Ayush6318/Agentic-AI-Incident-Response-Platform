@@ -1,2 +1,4 @@
-from app.tools.read_tools import search_logs
-print(search_logs.invoke({"service": "payment-service"}))
+from app.agents.graph import graph
+cfg = {"configurable": {"thread_id": "t1"}}
+out = graph.invoke({"incident": "payment-service HTTP 500 after deploy", "evidence": []}, cfg)
+print(out["root_cause"]); print(out["plan"])

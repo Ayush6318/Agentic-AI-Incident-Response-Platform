@@ -1,8 +1,8 @@
 from pydantic_settings  import BaseSettings
 
 class Settings(BaseSettings):
-  GOOGLE_API_KEY : str
-  MODEL_NAME : str = "gemini-2.5-flash"
+  GROQ_API_KEY : str
+  MODEL_NAME : str = "qwen/qwen3.8-27b"
   class Config:
     
     env_file = ".env"
