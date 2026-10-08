@@ -1,0 +1,10 @@
+{
+  "db_connection_usage": {
+    "before_deploy": 40,
+    "after_deploy": 98
+  },
+  "error_rate": {
+    "before_deploy": 0.5,
+    "after_deploy": 12.0
+  }
+}

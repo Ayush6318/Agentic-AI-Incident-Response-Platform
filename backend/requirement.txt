@@ -9,3 +9,5 @@ langchain_groq
 sentence-transformers
 langchain-huggingface
 langchain-chroma
+mcp
+langchain-mcp-adapters

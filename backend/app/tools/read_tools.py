@@ -1,8 +1,14 @@
 import json
 from pathlib import Path
 from langchain_core.tools import tool
+import os
 
 DATA = Path(__file__).resolve().parents[2] / "data"
+
+
+def _data_dir() -> Path:
+    scenario = os.getenv("SCENARIO")
+    return DATA / "scenarios" / scenario if scenario else DATA
 
 @tool
 def search_logs(service: str, level: str = "ERROR") -> str:

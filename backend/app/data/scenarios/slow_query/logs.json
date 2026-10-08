@@ -1,0 +1,20 @@
+[
+  {
+    "ts": "11:00",
+    "service": "report-service",
+    "level": "ERROR",
+    "msg": "Query took 14000ms: SELECT * FROM orders WHERE customer_email = ?"
+  },
+  {
+    "ts": "11:02",
+    "service": "report-service",
+    "level": "ERROR",
+    "msg": "Sequential scan on table orders (4M rows)"
+  },
+  {
+    "ts": "11:03",
+    "service": "report-service",
+    "level": "ERROR",
+    "msg": "Request timeout on /reports/monthly"
+  }
+]

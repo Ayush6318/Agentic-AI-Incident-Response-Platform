@@ -1,0 +1,12 @@
+[
+  {
+    "sha": "r11aa",
+    "msg": "Bump logging library",
+    "time": "08:30"
+  },
+  {
+    "sha": "r22bb",
+    "msg": "Update docs",
+    "time": "08:00"
+  }
+]

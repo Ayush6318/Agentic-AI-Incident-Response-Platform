@@ -1,0 +1,20 @@
+[
+  {
+    "ts": "10:02",
+    "service": "payment-service",
+    "level": "INFO",
+    "msg": "Deployed commit abc123"
+  },
+  {
+    "ts": "10:05",
+    "service": "payment-service",
+    "level": "ERROR",
+    "msg": "Database connection pool exhausted"
+  },
+  {
+    "ts": "10:06",
+    "service": "payment-service",
+    "level": "ERROR",
+    "msg": "HTTP 500 database connection timeout"
+  }
+]

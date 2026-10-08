@@ -16,7 +16,10 @@ log_agents = create_agent(
 )
 
 metrics_agent = create_agent(
-  llm,[get_metrics],system_prompt = "You are a metrics analyst. Check db_connection_usage and error_rate."
+  llm,[get_metrics],system_prompt=("You are a metrics analyst. Check the metrics most relevant to the incident. "
+                 "Known metric names: db_connection_usage, redis_memory_usage, "
+                 "service_memory_usage, query_latency_ms, error_rate. "
+                 "If a metric is not found, try another.")
 )
 
 code_agents = create_agent(

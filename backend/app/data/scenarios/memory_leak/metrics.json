@@ -1,0 +1,10 @@
+{
+  "service_memory_usage": {
+    "before_deploy": 41,
+    "after_deploy": 97
+  },
+  "error_rate": {
+    "before_deploy": 0.2,
+    "after_deploy": 3.0
+  }
+}

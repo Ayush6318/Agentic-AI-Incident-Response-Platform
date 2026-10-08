@@ -1,0 +1,26 @@
+[
+  {
+    "ts": "03:00",
+    "service": "auth-service",
+    "level": "INFO",
+    "msg": "Heap usage 41%"
+  },
+  {
+    "ts": "09:00",
+    "service": "auth-service",
+    "level": "INFO",
+    "msg": "Heap usage 68%"
+  },
+  {
+    "ts": "15:00",
+    "service": "auth-service",
+    "level": "ERROR",
+    "msg": "Heap usage 97%, GC overhead limit exceeded"
+  },
+  {
+    "ts": "15:05",
+    "service": "auth-service",
+    "level": "ERROR",
+    "msg": "OutOfMemoryError, pod restarted"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "redis_memory_usage": {
+    "before_deploy": 55,
+    "after_deploy": 95
+  },
+  "error_rate": {
+    "before_deploy": 0.4,
+    "after_deploy": 6.0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "query_latency_ms": {
+    "before_deploy": 120,
+    "after_deploy": 14000
+  },
+  "db_connection_usage": {
+    "before_deploy": 35,
+    "after_deploy": 40
+  },
+  "error_rate": {
+    "before_deploy": 0.3,
+    "after_deploy": 4.0
+  }
+}

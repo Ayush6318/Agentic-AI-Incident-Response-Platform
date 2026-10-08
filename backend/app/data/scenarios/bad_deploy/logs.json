@@ -1,0 +1,20 @@
+[
+  {
+    "ts": "16:00",
+    "service": "checkout-service",
+    "level": "INFO",
+    "msg": "Deployed commit xyz789"
+  },
+  {
+    "ts": "16:01",
+    "service": "checkout-service",
+    "level": "ERROR",
+    "msg": "Connection refused: db-prod-old.internal:5432"
+  },
+  {
+    "ts": "16:02",
+    "service": "checkout-service",
+    "level": "ERROR",
+    "msg": "Startup failed, health check failing"
+  }
+]

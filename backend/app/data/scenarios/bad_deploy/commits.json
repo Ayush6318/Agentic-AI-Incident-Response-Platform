@@ -1,0 +1,12 @@
+[
+  {
+    "sha": "xyz789",
+    "msg": "Update config: point DB host to db-prod-old",
+    "time": "16:00"
+  },
+  {
+    "sha": "w000a",
+    "msg": "Update README",
+    "time": "09:00"
+  }
+]
