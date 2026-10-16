@@ -21,6 +21,7 @@ def register(body: Credentials):
         raise HTTPException(400, "Email already registered")
     return {"id": user_id}
 
+
 @router.post("/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     user = queries.get_user_by_email(form.username.lower())
@@ -36,6 +37,11 @@ def current_user(token: str = Depends(oauth2)) -> dict:
     if not user:
         raise HTTPException(401, "User no longer exists")
     return user
+
+@router.get("/me")
+def me(user: dict = Depends(current_user)):
+    return {"id": user["id"], "email": user["email"], "role": user["role"]}
+
 
 def require_role(*roles: str):
     def checker(user: dict = Depends(current_user)) -> dict:
