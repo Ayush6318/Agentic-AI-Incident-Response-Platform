@@ -38,3 +38,11 @@ def test_cannot_approve_twice(client):
     client.get(f"/incidents/{inc_id}/stream", headers=h)
     client.post(f"/incidents/{inc_id}/decision?approve=true", headers=h)
     assert client.post(f"/incidents/{inc_id}/decision?approve=true", headers=h).status_code == 409
+    
+
+def test_invalid_token_rejected(client):
+    r = client.get("/incidents", headers={"Authorization": "Bearer not-a-real-token"})
+    assert r.status_code == 401
+
+def test_no_token_rejected(client):
+    assert client.get("/incidents").status_code == 401
