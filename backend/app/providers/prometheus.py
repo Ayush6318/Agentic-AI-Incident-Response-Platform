@@ -9,7 +9,7 @@ from app.services import get_service
 
 # The model picks a name; only these queries ever run. {job} comes from the service registry.
 METRICS = {
-    "error_rate_percent": 'sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[1m])) '
+        "error_rate_percent": '(sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[1m])) or vector(0)) '
                           '/ sum(rate(http_requests_total{{job="{job}"}}[1m])) * 100',
     "request_rate": 'sum(rate(http_requests_total{{job="{job}"}}[1m]))',
     "latency_p95_seconds": 'histogram_quantile(0.95, sum by (le) '
@@ -52,18 +52,25 @@ class PrometheusMetricsProvider:
             raise ProviderError(f"Unknown metric '{metric}'. Available: {', '.join(METRICS)}")
         job = get_service(service)["prom_job"]
         end = time.time()
+        step = max(15, minutes * 60 // 300)
         data = self._get("/api/v1/query_range", query=METRICS[metric].format(job=job),
-                         start=end - minutes * 60, end=end, step=max(5, minutes))
+                         start=end - minutes * 60, end=end, step=step)
         if not data["result"]:
-            return {"metric": metric, "note": "No data. The service may not be scraped, or the metric is undefined."}
+            return {"metric": metric, "note": "No data returned:no matching series. The service may be down or not scraped, or nothing has happened yet (for example no traffic)."}
 
         pts = [(float(t), float(v)) for t, v in data["result"][0]["values"] if math.isfinite(float(v))]
         if not pts:
             return {"metric": metric, "note": "No finite values in this window (no traffic?)."}
 
         vals = [v for _, v in pts]
-        out = {"metric": metric, "window_minutes": minutes, "first": _r(vals[0]), "last": _r(vals[-1]),
+        out = {"metric": metric, "window_minutes": minutes,"step_seconds": step,"first": _r(vals[0]), "last": _r(vals[-1]),
                "min": _r(min(vals)), "max": _r(max(vals)), "avg": _r(sum(vals) / len(vals))}
+        positive = [t for t, v in pts if v > 0]
+        if positive:
+            out["first_above_zero_at"], out["last_above_zero_at"] = _iso(positive[0]), _iso(positive[-1])
+        else:
+            out["always_zero"] = True
+        
         n = len(pts)
         if n > 1:
             i = max(range(1, n), key=lambda k: abs(pts[k][1] - pts[k - 1][1]))
@@ -82,3 +89,15 @@ class PrometheusMetricsProvider:
             out.append({"alert": labels.get("alertname"), "state": a["state"], "since": a.get("activeAt"),
                         "severity": labels.get("severity"), "summary": a.get("annotations", {}).get("summary")})
         return out or {"note": "No pending or firing alerts"}
+      
+    def running_version(self, service: str):
+      
+      job = get_service(service)["prom_job"]
+      info = self._get("/api/v1/query", query=f'app_info{{job="{job}"}}')["result"]
+      if not info:
+            return {"note": "No version information: the service is down, not scraped, or exposes no app_info metric."}
+      out = {"versions": sorted({s["metric"].get("version") for s in info})}
+      start = self._get("/api/v1/query", query=f'process_start_time_seconds{{job="{job}"}}')["result"]
+      if start:
+            out["running_since"] = _iso(float(start[0]["value"][1]))
+      return out

@@ -17,9 +17,8 @@ class Settings(BaseSettings):
     METRICS_PROVIDER: str = "fake"
     GITHUB_TOKEN: str
     GITHUB_REPO: str
-    LOKI_URL: str = "http://localhost:3100"
-    PROMETHEUS_URL: str = "http://localhost:9090"
-    
+    LOKI_URL: str 
+    PROMETHEUS_URL: str
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

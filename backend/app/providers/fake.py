@@ -37,6 +37,13 @@ class FakeMetricsProvider:
 
     def alerts(self, service: str):
         return {"note": "No active alerts (fake data)"}
+      
+    def running_version(self, service: str):
+      
+      deploys = [l for l in _load("logs.json") if "Deployed commit" in l["msg"]]
+      if not deploys:
+            return {"note": "No version information in fake data"}
+      return {"versions": [deploys[-1]["msg"].split()[-1]]}
 
 
 class FakeCodeProvider:

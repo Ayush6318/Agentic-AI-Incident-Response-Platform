@@ -18,21 +18,19 @@ def _safe(source: str, fn):
 @tool
 def search_logs(service: str, level: str = "ERROR", minutes: int = 30) -> str:
     """Search recent logs of a service. level is ERROR, WARNING or INFO (WARNING includes errors,
-    INFO includes everything). minutes is how far back to look (max 180)."""
-    return _safe("logs", lambda: log_provider().search(service, level.upper(), min(max(minutes, 1), 180)))
+    INFO includes everything). minutes is how far back to look (max 1440 = 24 hours)."""
+    return _safe("logs", lambda: log_provider().search(service, level.upper(), min(max(minutes, 1), 1440)))
 
+@tool
+def get_metrics(service: str, metric: str, minutes: int = 30) -> str:
+    """Summarize one metric of a service over the last N minutes (max 1440 = 24 hours): first, last, min, max
+    values and when the biggest change happened. Use only the metric names listed in your instructions."""
+    return _safe("metrics", lambda: metrics_provider().query(service, metric, min(max(minutes, 5), 1440)))
 
 @tool
 def get_recent_deploys(service: str, hours: int = 24) -> str:
     """List recent deploy/restart markers of a service with the commit version that was started."""
-    return _safe("deploys", lambda: log_provider().deploys(service, min(max(hours, 1), 72)))
-
-
-@tool
-def get_metrics(service: str, metric: str, minutes: int = 30) -> str:
-    """Summarize one metric of a service over the last N minutes: first, last, min, max values and when the
-    biggest change happened. Use only the metric names listed in your instructions."""
-    return _safe("metrics", lambda: metrics_provider().query(service, metric, min(max(minutes, 5), 180)))
+    return _safe("deploys", lambda: log_provider().deploys(service, min(max(hours, 1), 168)))
 
 
 @tool
@@ -42,9 +40,15 @@ def get_active_alerts(service: str) -> str:
 
 
 @tool
+def get_running_version(service: str) -> str:
+    """Return the commit version the service is running right now and since when. Use it to decide which
+    commit to inspect."""
+    return _safe("version", lambda: metrics_provider().running_version(service))
+
+@tool
 def get_recent_commits(service: str, hours: int = 24) -> str:
     """List recent commits of the service's repository (sha, time, author, first line of message)."""
-    return _safe("commits", lambda: code_provider().recent_commits(service, min(max(hours, 1), 168)))
+    return _safe("commits", lambda: code_provider().recent_commits(service, min(max(hours, 1), 720)))
 
 
 @tool
