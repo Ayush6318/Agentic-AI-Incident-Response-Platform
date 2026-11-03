@@ -8,6 +8,8 @@ from app.config import settings
 from app.db.database import pool, checkpoint_pool
 from app.db.migrate import run as run_migrations
 from app.agents.graph import build_graph
+from app.api import auth, incidents, services
+from app.api import runbooks
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +28,9 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS.split(","
                    allow_methods=["*"], allow_headers=["*"])
 app.include_router(auth.router)
 app.include_router(incidents.router)
+app.include_router(services.router)
+app.include_router(runbooks.router)
+
 
 @app.get("/health")
 def health():

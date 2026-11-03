@@ -7,7 +7,7 @@ from app.config import settings
 def code_provider():
     if settings.CODE_PROVIDER == "github":
         from app.providers.github import GitHubCodeProvider
-        return GitHubCodeProvider(settings.GITHUB_TOKEN)
+        return GitHubCodeProvider()
     from app.providers.fake import FakeCodeProvider
     return FakeCodeProvider()
 

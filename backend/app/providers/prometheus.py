@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 import httpx
 
 from app.providers.base import ProviderError
-from app.services import get_service
+from app.services import as_config
 
 # The model picks a name; only these queries ever run. {job} comes from the service registry.
 METRICS = {
-        "error_rate_percent": '(sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[1m])) or vector(0)) '
+    "error_rate_percent": '(sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[1m])) or vector(0)) '
                           '/ sum(rate(http_requests_total{{job="{job}"}}[1m])) * 100',
     "request_rate": 'sum(rate(http_requests_total{{job="{job}"}}[1m]))',
     "latency_p95_seconds": 'histogram_quantile(0.95, sum by (le) '
@@ -47,57 +47,62 @@ class PrometheusMetricsProvider:
             raise ProviderError(f"Prometheus error: {data.get('error', r.status_code)}")
         return data["data"]
 
-    def query(self, service: str, metric: str, minutes: int):
+    def _job(self, service) -> str:
+        cfg = as_config(service)
+        if not cfg.prom_job:
+            raise ProviderError(f"No metrics job is configured for service '{cfg.name}'")
+        return cfg.prom_job
+
+    def query(self, service, metric: str, minutes: int):
         if metric not in METRICS:
             raise ProviderError(f"Unknown metric '{metric}'. Available: {', '.join(METRICS)}")
-        job = get_service(service)["prom_job"]
+        job = self._job(service)
         end = time.time()
-        step = max(15, minutes * 60 // 300)
+        step = max(15, minutes * 60 // 300)                 # about 300 points for any window
         data = self._get("/api/v1/query_range", query=METRICS[metric].format(job=job),
                          start=end - minutes * 60, end=end, step=step)
         if not data["result"]:
-            return {"metric": metric, "note": "No data returned:no matching series. The service may be down or not scraped, or nothing has happened yet (for example no traffic)."}
-
+            return {"metric": metric, "note": "No data returned: no matching series. The service may be down or not "
+                                              "scraped, or nothing has happened yet (for example no traffic)."}
         pts = [(float(t), float(v)) for t, v in data["result"][0]["values"] if math.isfinite(float(v))]
         if not pts:
             return {"metric": metric, "note": "No finite values in this window (no traffic?)."}
 
         vals = [v for _, v in pts]
-        out = {"metric": metric, "window_minutes": minutes,"step_seconds": step,"first": _r(vals[0]), "last": _r(vals[-1]),
-               "min": _r(min(vals)), "max": _r(max(vals)), "avg": _r(sum(vals) / len(vals))}
+        out = {"metric": metric, "window_minutes": minutes, "step_seconds": step, "first": _r(vals[0]),
+               "last": _r(vals[-1]), "min": _r(min(vals)), "max": _r(max(vals)), "avg": _r(sum(vals) / len(vals))}
         positive = [t for t, v in pts if v > 0]
         if positive:
             out["first_above_zero_at"], out["last_above_zero_at"] = _iso(positive[0]), _iso(positive[-1])
         else:
             out["always_zero"] = True
-        
         n = len(pts)
         if n > 1:
             i = max(range(1, n), key=lambda k: abs(pts[k][1] - pts[k - 1][1]))
-            out["biggest_jump"] = {"at": _iso(pts[i][0]), "from": _r(pts[i - 1][1]), "to": _r(pts[i][1])}
+            if pts[i][1] != pts[i - 1][1]:                      
+                out["biggest_jump"] = {"at": _iso(pts[i][0]), "from": _r(pts[i - 1][1]), "to": _r(pts[i][1])}
         idx = sorted({round(k * (n - 1) / 7) for k in range(8)}) if n > 8 else range(n)
         out["points"] = [{"t": _iso(pts[k][0]), "v": _r(pts[k][1])} for k in idx]
         return out
 
-    def alerts(self, service: str):
-        get_service(service)
+    def alerts(self, service):
+        cfg = as_config(service)
         out = []
         for a in self._get("/api/v1/alerts")["alerts"]:
             labels = a.get("labels", {})
-            if labels.get("service") not in (None, service):
+            if labels.get("service") not in (None, cfg.name):
                 continue
             out.append({"alert": labels.get("alertname"), "state": a["state"], "since": a.get("activeAt"),
                         "severity": labels.get("severity"), "summary": a.get("annotations", {}).get("summary")})
         return out or {"note": "No pending or firing alerts"}
-      
-    def running_version(self, service: str):
-      
-      job = get_service(service)["prom_job"]
-      info = self._get("/api/v1/query", query=f'app_info{{job="{job}"}}')["result"]
-      if not info:
+
+    def running_version(self, service):
+        job = self._job(service)
+        info = self._get("/api/v1/query", query=f'app_info{{job="{job}"}}')["result"]
+        if not info:
             return {"note": "No version information: the service is down, not scraped, or exposes no app_info metric."}
-      out = {"versions": sorted({s["metric"].get("version") for s in info})}
-      start = self._get("/api/v1/query", query=f'process_start_time_seconds{{job="{job}"}}')["result"]
-      if start:
+        out = {"versions": sorted({s["metric"].get("version") for s in info})}
+        start = self._get("/api/v1/query", query=f'process_start_time_seconds{{job="{job}"}}')["result"]
+        if start:
             out["running_since"] = _iso(float(start[0]["value"][1]))
-      return out
+        return out

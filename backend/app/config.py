@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     GITHUB_REPO: str
     LOKI_URL: str 
     PROMETHEUS_URL: str
+    ENCRYPTION_KEY: str = ""
+    GITHUB_WRITE_TOKEN: str = ""
+    GITHUB_DEFAULT_BRANCH: str = "main"
+    REMEDIATION_AUTO_MERGE: bool = False
+    ALLOW_PLATFORM_SERVICES: bool = True
+    MAX_SERVICES_PER_USER: int = 5
+    
+    
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

@@ -51,6 +51,10 @@ STATUS_STYLES = {
     "done": ("Resolved", "#166534", "#DCFCE7", "#BBF7D0"),
     "failed": ("Failed", "#991B1B", "#FEE2E2", "#FECACA"),
     "investigating": ("Investigating", "#3730A3", "#EEF0FF", "#C7D2FE"),
+    # CHANGED: remediation outcomes (used by show_remediations)
+    "pr_opened": ("PR opened", "#3730A3", "#EEF0FF", "#C7D2FE"),
+    "merged": ("Merged", "#166534", "#DCFCE7", "#BBF7D0"),
+    "blocked": ("Blocked", "#92400E", "#FEF3C7", "#FDE68A"),
 }
 NEUTRAL_STYLE = ("#475569", "#F1F5F9", "#E2E8F0")
 
@@ -315,21 +319,27 @@ def stream_into_ui(incident_id: int):
 
 
 def approval_card(inc: dict, ctx: str):
-    if st.session_state.user["role"] not in ("sre", "admin"):
+    # CHANGED: the owner of the incident (who owns the repository) may approve, as well as sre/admin
+    user = st.session_state.user
+    can_approve = user["role"] in ("sre", "admin") or inc.get("user_id") == user.get("id")
+    if not can_approve:
         st.info(
-            "Execution is locked. This remediation plan requires approval from an SRE or administrator.",
+            "Execution is locked. This remediation plan requires approval from the incident owner, "
+            "an SRE or an administrator.",
             icon=ic("lock"),
         )
         return
 
+    # CHANGED: the real action is a revert pull request, not a script run in production
     st.warning(
-        "Action required. Approving will execute the remediation script in the production environment.",
+        "Action required. Approving opens a revert pull request on the connected repository. "
+        "Nothing is deployed by this platform.",
         icon=ic("warning"),
     )
 
     c1, c2, _ = st.columns([1.2, 1, 1.8])
     if c1.button(
-        "Approve and Execute", key=f"{ctx}_a_{inc['id']}", type="primary",
+        "Approve Rollback", key=f"{ctx}_a_{inc['id']}", type="primary",
         use_container_width=True, icon=ic("check"),
     ):
         res = run(api.decide, st.session_state.token, inc["id"], True)
@@ -344,6 +354,24 @@ def approval_card(inc: dict, ctx: str):
         if res:
             st.session_state.flash = res["result"]
             st.rerun()
+
+
+# CHANGED (new): shows what actually happened after approval (pull request link, blocked or failed reason)
+def show_remediations(incident_id: int):
+    rems = run(api.list_remediations, st.session_state.token, incident_id) or []
+    if not rems:
+        return
+    section("Remediation")
+    for r in rems:
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            st.markdown(badge(r["status"]), unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"Rollback of commit `{html.escape(r['target_sha'][:7])}`")
+            if r["pr_url"]:
+                st.markdown(f"[Open the pull request]({r['pr_url']})")
+            if r["detail"]:
+                st.caption(r["detail"])
 
 
 def show_incident(incident_id, ctx: str):
@@ -388,6 +416,8 @@ def show_incident(incident_id, ctx: str):
                 "Start a new investigation.",
                 icon=ic("error"),
             )
+        elif inc["status"] == "done":
+            show_remediations(inc["id"])      # CHANGED (new)
 
 
 def investigate_tab():
@@ -396,6 +426,8 @@ def investigate_tab():
         "Describe an observed anomaly. The agents analyze logs, metrics and code to infer a root "
         "cause and propose a remediation plan.",
     )
+
+    services = run(api.list_services, st.session_state.token) or []     # CHANGED (new)
 
     with st.container(border=True):
         text = st.text_area(
@@ -406,6 +438,14 @@ def investigate_tab():
             "starting around 10:00 UTC after the latest deploy.",
             help=f"Minimum {MIN_INCIDENT_CHARS} characters.",
         )
+
+        # CHANGED (new): choose which connected repository to investigate
+        service = None
+        if services:
+            service = st.selectbox("Service", [s["name"] for s in services])
+        else:
+            st.caption("No repository connected yet: the built-in demo service is investigated. "
+                       "Connect your own under Repositories.")
 
         c1, c2 = st.columns([1.2, 3])
         with c1:
@@ -423,7 +463,7 @@ def investigate_tab():
                 )
             else:
                 with st.spinner("Creating incident..."):
-                    inc = run(api.create_incident, st.session_state.token, text.strip())
+                    inc = run(api.create_incident, st.session_state.token, text.strip(), service)   # CHANGED
                 if inc:
                     st.session_state.incident_id = inc["id"]
                     stream_into_ui(inc["id"])
@@ -473,6 +513,72 @@ def history_tab():
     show_incident(chosen, "hist")
 
 
+# CHANGED (new): connect, list and remove GitHub repositories
+def services_tab():
+    page_header(
+        "Connected Repositories",
+        "Connect a GitHub repository so the agents can read its commits and diffs. Your token is "
+        "encrypted and is never shown again.",
+    )
+    token = st.session_state.token
+
+    with st.container(border=True):
+        with st.form("connect_service", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            name = c1.text_input("Service name", placeholder="checkout-api",
+                                 help="Lowercase letters, digits, - or _.")
+            repo = c2.text_input("GitHub repository", placeholder="owner/repository")
+            gh_token = st.text_input(
+                "GitHub token", type="password",
+                help="Use a fine-grained token limited to this one repository. Reading needs Contents "
+                     "(read-only). Rollback pull requests also need Contents and Pull requests "
+                     "(read and write).",
+            )
+            allow = st.checkbox("Allow rollback pull requests after I approve")
+            merge = st.checkbox("Also merge the revert automatically after I approve (higher risk)")
+            with st.expander("Advanced: log and metric labels"):
+                log_label = st.text_input("Loki service label", placeholder="defaults to the service name")
+                prom_job = st.text_input("Prometheus job", placeholder="defaults to the service name")
+            submit = st.form_submit_button("Connect Repository", type="primary", icon=ic("link"))
+
+            if submit:
+                if not name.strip() or not repo.strip() or not gh_token.strip():
+                    st.error("Enter a service name, a repository and a token.", icon=ic("error"))
+                else:
+                    res = run(api.add_service, token, name.strip(), repo.strip(), gh_token.strip(),
+                              allow, merge, log_label.strip() or None, prom_job.strip() or None)
+                    if res:
+                        st.session_state.flash = f"Connected {res['name']}"
+                        st.rerun()
+
+    section("Your repositories")
+    services = run(api.list_services, token) or []
+    if not services:
+        st.info("No repositories connected yet.", icon=ic("inbox"))
+        return
+    for s in services:
+        with st.container(border=True):
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                st.markdown(f"**{html.escape(s['name'])}**  \n`{html.escape(s['github_repo'])}`")
+                if s["auto_merge"]:
+                    mode = "Rollback PRs with auto-merge"
+                elif s["remediation_enabled"]:
+                    mode = "Rollback PRs"
+                else:
+                    mode = "Read-only"
+                fg, bg, border = ("#166534", "#DCFCE7", "#BBF7D0") if s["remediation_enabled"] else NEUTRAL_STYLE
+                st.markdown(
+                    f"<span class='g-badge' style='color:{fg};background:{bg};border-color:{border};'>"
+                    f"{html.escape(mode)}</span>",
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                if st.button("Remove", key=f"rm_{s['id']}", use_container_width=True, icon=ic("delete")):
+                    if run(api.delete_service, token, s["id"]):
+                        st.rerun()
+
+
 def sidebar():
     user = st.session_state.user
     with st.sidebar:
@@ -506,11 +612,14 @@ def main_view():
     if msg := st.session_state.pop("flash", None):
         st.toast(msg, icon=ic("check_circle"))
 
-    tab_new, tab_history = st.tabs(["Active Investigation", "Incident History"])
+    # CHANGED: third tab
+    tab_new, tab_history, tab_services = st.tabs(["Active Investigation", "Incident History", "Repositories"])
     with tab_new:
         investigate_tab()
     with tab_history:
         history_tab()
+    with tab_services:
+        services_tab()
 
 
 inject_css()

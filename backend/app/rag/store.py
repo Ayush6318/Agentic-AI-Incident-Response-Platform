@@ -11,9 +11,9 @@ db = Chroma(collection_name="runbooks",embedding_function=emb,persist_directory=
 
 def ingest():
   splitter = RecursiveCharacterTextSplitter(chunk_size = 500,chunk_overlap = 5)
-  for f in RUNBOOKS.glob(".*md"):    
+  for f in RUNBOOKS.glob("*.md"):    
    chunks = splitter.split_text(f.read_text())
-   db.add_texts(chunks,metadatas=[{"source":f.name}]* len(chunks))
+   db.add_texts(chunks,metadatas=[{"source": "runbook", "user_id": 0, "name": f.name}]* len(chunks))
   
 @tool
 def search_runbooks(query: str) -> str:

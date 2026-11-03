@@ -17,10 +17,10 @@ def _load(name: str):
 
 
 class FakeLogProvider:
-    def search(self, service: str, level: str, minutes: int):
-        return [l for l in _load("logs.json") if l["service"] == service and l["level"] in (level, "INFO")]
+    def search(self, service, level: str, minutes: int):
+        return [l for l in _load("logs.json") if l["level"] in (level, "INFO")]
 
-    def deploys(self, service: str, hours: int):
+    def deploys(self, service, hours: int):
         return [{"time": l["ts"], "version": l["msg"].split()[-1]}
                 for l in _load("logs.json") if "Deployed commit" in l["msg"]]
 
@@ -49,6 +49,10 @@ class FakeMetricsProvider:
 class FakeCodeProvider:
     def recent_commits(self, service: str, hours: int):
         return _load("commits.json")
+    
+    def create_revert_pr(self, cfg, sha, incident_id, summary="", merge=False):
+        return {"status": "simulated", "pr_number": 0, "pr_url": "", "branch": "", "reverted_commit": sha[:7],
+                "files": [], "detail": "fake provider: nothing was changed"}
 
     def commit_diff(self, service: str, sha: str):
         for c in _load("commits.json"):

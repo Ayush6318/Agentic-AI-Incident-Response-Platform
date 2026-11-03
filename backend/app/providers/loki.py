@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 import httpx
 
 from app.providers.base import ProviderError
-from app.services import get_service
+from app.services import as_config
 
 NS = 1_000_000_000
+MAX_LINES = 5000
 
 
 def _iso(ns: int) -> str:
@@ -28,9 +29,11 @@ class LokiLogProvider:
         self.base_url = base_url
         self.client = client or httpx.Client(base_url=base_url, timeout=10.0)
 
-    def _selector(self, service: str, extra: list[str] | None = None) -> str:
-        labels = get_service(service)["loki_labels"]          # trusted values only, never from the model
-        parts = [f'{k}="{v}"' for k, v in labels.items()] + (extra or [])
+    def _selector(self, service, extra=None) -> str:
+        cfg = as_config(service)
+        if not cfg.loki_labels:
+            raise ProviderError(f"No log labels are configured for service '{cfg.name}'")
+        parts = [f'{k}="{v}"' for k, v in cfg.loki_labels.items()] + (extra or [])   # trusted values only
         return "{" + ", ".join(parts) + "}"
 
     def _query(self, logql: str, minutes: int, limit: int = 1000) -> list[tuple[int, str]]:
@@ -49,11 +52,11 @@ class LokiLogProvider:
         lines.sort()
         return lines
 
-    def search(self, service: str, level: str, minutes: int):
+    def search(self, service, level: str, minutes: int):
         extra = {"ERROR": ['level="ERROR"'], "WARNING": ['level=~"WARNING|ERROR"'], "INFO": []}.get(level)
         if extra is None:
             raise ProviderError("level must be ERROR, WARNING or INFO")
-        lines = self._query(self._selector(service, extra), minutes)
+        lines = self._query(self._selector(service, extra), minutes, limit=MAX_LINES)
         if not lines:
             return {"window_minutes": minutes, "total_lines": 0,
                     "note": "No matching log lines. The service may be healthy, or its logs are not being collected."}
@@ -62,7 +65,7 @@ class LokiLogProvider:
         for ts, line in lines:
             e = _parse(line)
             msg = str(e.get("msg", ""))
-            key = (e.get("level"), re.sub(r"\d+(\.\d+)?", "N", msg))     # same message, different numbers
+            key = (e.get("level"), re.sub(r"\d+(\.\d+)?", "N", msg))
             g = groups.setdefault(key, {"level": e.get("level"), "message": msg[:300], "count": 0,
                                         "first": ts, "last": ts, "versions": set()})
             g["count"] += 1
@@ -73,9 +76,10 @@ class LokiLogProvider:
         top = sorted(groups.values(), key=lambda g: -g["count"])[:10]
         for g in top:
             g["first"], g["last"], g["versions"] = _iso(g["first"]), _iso(g["last"]), sorted(g["versions"])
-        return {"window_minutes": minutes, "total_lines": len(lines), "groups": top}
+        return {"window_minutes": minutes, "total_lines": len(lines),
+                "truncated": len(lines) >= MAX_LINES, "groups": top}
 
-    def deploys(self, service: str, hours: int):
+    def deploys(self, service, hours: int):
         lines = self._query(self._selector(service) + ' |= "Deployed commit"', hours * 60, limit=200)
         if not lines:
             return {"note": f"No deploy markers in the last {hours}h"}
